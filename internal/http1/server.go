@@ -41,7 +41,13 @@ func HandleConnection(conn net.Conn, mux http.Handler) error {
 			* ParseRequest()
 		  * mux.ServeHTTP()
 	*/
-	defer conn.Close()
+	defer func(conn net.Conn) {
+		err := conn.Close()
+		if err != nil {
+			_ = fmt.Errorf("Close connection: %w", err)
+		}
+	}(conn)
+
 	buffer := bufio.NewReader(conn)
 	//n, err := conn.Read(buffer)
 	request, err := ParseRequest(buffer)
