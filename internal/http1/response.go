@@ -1,16 +1,18 @@
 package http1
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 )
 
 type Response struct {
-	conn        net.Conn
-	header      http.Header
-	statusCode  int
-	wroteHeader bool
+	conn       net.Conn
+	header     http.Header
+	statusCode int
+	body       bytes.Buffer
 }
 
 func NewResponse(conn net.Conn) *Response {
@@ -25,31 +27,24 @@ func (r *Response) Header() http.Header {
 
 func (r *Response) Write(data []byte) (n int, err error) {
 	//panic("Response.Write: Not Implemented")
-	if !r.wroteHeader {
-		r.WriteHeader(http.StatusOK)
-	}
-	return r.conn.Write(data)
+	r.WriteHeader(http.StatusOK)
+	return r.body.Write(data)
 }
 
 func (r *Response) WriteHeader(statusCode int) {
 	//panic("Response.WriteHeader: Not Implemented")
-	if r.wroteHeader {
-		return
+	if r.statusCode == 0 {
+		r.statusCode = statusCode
 	}
-	r.wroteHeader = true
-	r.statusCode = statusCode
+}
 
-	statusText := http.StatusText(statusCode)
-	if statusText == "" {
-		statusText = "status"
-	}
-	fmt.Fprintf(r.conn, "HTTP/1.1 %d %s\r\n", statusCode, statusText)
+func (r *Response) finish() error {
+	r.WriteHeader(http.StatusOK)
+	r.header.Set("Content-Length", strconv.Itoa(r.body.Len()))
 
-	if r.header.Get("Connection") == "" {
-		r.header.Set("Connection", "close")
-	}
-
+	fmt.Fprintf(r.conn, "HTTP/1.1 %d %s\r\n", r.statusCode, http.StatusText(r.statusCode))
 	r.header.Write(r.conn)
-
-	fmt.Fprintf(r.conn, "\r\n")
+	fmt.Fprint(r.conn, "\r\n")
+	_, err := r.conn.Write(r.body.Bytes())
+	return err
 }

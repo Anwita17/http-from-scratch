@@ -50,14 +50,21 @@ func HandleConnection(conn net.Conn, mux http.Handler) error {
 
 	buffer := bufio.NewReader(conn)
 	//n, err := conn.Read(buffer)
-	request, err := ParseRequest(buffer)
-	if err != nil {
-		return err
-	}
+	for {
+		if _, err := buffer.Peek(1); err != nil {
+			return nil
+		}
+		request, err := ParseRequest(buffer)
+		if err != nil {
+			return err
+		}
 
-	w := NewResponse(conn)
-	mux.ServeHTTP(w, request)
-	w.WriteHeader(http.StatusOK)
+		w := NewResponse(conn)
+		mux.ServeHTTP(w, request)
+		if err := w.finish(); err != nil {
+			return err
+		}
+		//return nil
+	}
 	//_, err = conn.Write([]byte("HTTP/1.1 200 OK \r\n Content-Length: 0\r\n"))
-	return nil
 }
