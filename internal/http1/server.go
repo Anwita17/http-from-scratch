@@ -2,6 +2,7 @@ package http1
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -52,9 +53,16 @@ func HandleConnection(conn net.Conn, mux http.Handler) error {
 		}
 		request, err := ParseRequest(buffer)
 		if err != nil {
-			return err
+			code := http.StatusBadRequest
+			if errors.Is(err, errWithVersion) {
+				code = http.StatusHTTPVersionNotSupported
+			}
+			w := NewResponse(conn)
+			w.Header().Set("Connection", "close")
+			w.WriteHeader(code)
+			w.finish(&http.Request{Method: http.MethodGet})
+			return nil
 		}
-
 		closeAfter := shouldClose(request)
 		w := NewResponse(conn)
 		if closeAfter {

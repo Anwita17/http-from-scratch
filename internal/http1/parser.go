@@ -3,6 +3,7 @@ package http1
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -22,6 +23,9 @@ func ParseRequest(reader *bufio.Reader) (*http.Request, error) {
 	line = strings.TrimRight(line, "\r\n")
 	method, uri, version, err := ParseRequestLine(line)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkProtoVersion(version); err != nil {
 		return nil, err
 	}
 	log.Printf("method=%q uri=%q version=%q", method, uri, version)
@@ -89,4 +93,35 @@ func ParseRequestHeader(line string) (name, val string, err error) {
 		return "", "", fmt.Errorf("Header is malformed: %q", line)
 	}
 	return name, strings.Trim(val, " \t"), nil
+}
+
+// check all protocol version according to RFC
+var errWithVersion = errors.New("http version not supported")
+
+func checkProtoVersion(version string) error {
+	protocol, num, found := strings.Cut(version, "/")
+	if !found || protocol != "HTTP" {
+		return fmt.Errorf("malformed version %q", version)
+	}
+
+	major, minor, found := strings.Cut(num, ".")
+	if !found || !isDigit(major) || !isDigit(minor) {
+		return fmt.Errorf("malformed version %q", version)
+	}
+	if version != "HTTP/1.0" && version != "HTTP/1.1" {
+		return fmt.Errorf("%w : %q", errWithVersion, version)
+	}
+	return nil
+}
+
+func isDigit(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
