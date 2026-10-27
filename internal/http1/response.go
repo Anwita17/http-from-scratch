@@ -38,13 +38,16 @@ func (r *Response) WriteHeader(statusCode int) {
 	}
 }
 
-func (r *Response) finish() error {
+func (r *Response) finish(request *http.Request) error {
 	r.WriteHeader(http.StatusOK)
 	r.header.Set("Content-Length", strconv.Itoa(r.body.Len()))
 
 	fmt.Fprintf(r.conn, "HTTP/1.1 %d %s\r\n", r.statusCode, http.StatusText(r.statusCode))
 	r.header.Write(r.conn)
 	fmt.Fprint(r.conn, "\r\n")
+	if request.Method == http.MethodHead {
+		return nil
+	}
 	_, err := r.conn.Write(r.body.Bytes())
 	return err
 }

@@ -2,10 +2,13 @@ package http1
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -45,12 +48,6 @@ func ParseRequest(reader *bufio.Reader) (*http.Request, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Bad URI %q: %w", uri, err)
 	}
-	//	if version != "HTTP/1.1" && version != "HTTP/1.0" {
-	//		return nil, fmt.Errorf("Unsupported version of HTTP is used : %q", version)
-	//	}
-	//	if version == "HTTP/1.1" && header_store.Get("Host") == "" {
-	//		return nil, fmt.Errorf("Missing Host in Header!")
-	//	}
 	request := &http.Request{
 		Method:     method,
 		URL:        u,
@@ -60,7 +57,19 @@ func ParseRequest(reader *bufio.Reader) (*http.Request, error) {
 		RequestURI: uri,
 		Body:       http.NoBody,
 	}
-
+	// handle post with body
+	if cl := header_store.Get("Content-Length"); cl != "" {
+		n, err := strconv.ParseInt(cl, 10, 64)
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("Bad Content-Length %q", cl)
+		}
+		body := make([]byte, n)
+		if _, err := io.ReadFull(reader, body); err != nil {
+			return nil, fmt.Errorf("Error in body : %w", err)
+		}
+		request.ContentLength = n
+		request.Body = io.NopCloser(bytes.NewReader(body))
+	}
 	log.Printf("parsed request : %s %s host=%s headers=%s", request.Method, request.URL.Path, request.Host, request.Header)
 	return request, nil
 }

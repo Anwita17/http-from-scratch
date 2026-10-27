@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 )
 
 func ListenAndServe(addr string, handler http.Handler) error {
@@ -36,11 +37,6 @@ func ListenAndServe(addr string, handler http.Handler) error {
 
 func HandleConnection(conn net.Conn, mux http.Handler) error {
 	//panic("HandleConnection: Not Implemented")
-	/*
-			Functions that might be useful:
-			* ParseRequest()
-		  * mux.ServeHTTP()
-	*/
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {
@@ -59,12 +55,28 @@ func HandleConnection(conn net.Conn, mux http.Handler) error {
 			return err
 		}
 
+		closeAfter := shouldClose(request)
 		w := NewResponse(conn)
+		if closeAfter {
+			w.Header().Set("Connection", "close")
+		}
 		mux.ServeHTTP(w, request)
-		if err := w.finish(); err != nil {
+		if err := w.finish(request); err != nil {
 			return err
+		}
+
+		if closeAfter {
+			return nil
 		}
 		//return nil
 	}
 	//_, err = conn.Write([]byte("HTTP/1.1 200 OK \r\n Content-Length: 0\r\n"))
+}
+
+func shouldClose(request *http.Request) bool {
+	conn := request.Header.Get("Connection")
+	if request.Proto == "HTTP/1.0" {
+		return !strings.EqualFold(conn, "keep-alive")
+	}
+	return strings.EqualFold(conn, "close")
 }
