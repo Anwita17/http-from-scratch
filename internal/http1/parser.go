@@ -16,11 +16,10 @@ import (
 func ParseRequest(reader *bufio.Reader) (*http.Request, error) {
 	//panic("ParseRequest: Not Implemented")
 	//buffer := make([]byte, 1024)
-	line, err := reader.ReadString('\n')
+	line, err := readLine(reader)
 	if err != nil {
 		return nil, fmt.Errorf("Request line: %w", err)
 	}
-	line = strings.TrimRight(line, "\r\n")
 	method, uri, version, err := ParseRequestLine(line)
 	if err != nil {
 		return nil, err
@@ -32,11 +31,10 @@ func ParseRequest(reader *bufio.Reader) (*http.Request, error) {
 	// Header
 	header_store := http.Header{}
 	for {
-		header, err := reader.ReadString('\n')
+		header, err := readLine(reader)
 		if err != nil {
 			return nil, fmt.Errorf("Error in header: %w", err)
 		}
-		header = strings.TrimRight(header, "\r\n")
 		if header == "" {
 			log.Printf("Reached the end of Headers!")
 			break
@@ -51,6 +49,13 @@ func ParseRequest(reader *bufio.Reader) (*http.Request, error) {
 	u, err := url.ParseRequestURI(uri)
 	if err != nil {
 		return nil, fmt.Errorf("Bad URI %q: %w", uri, err)
+	}
+	hosts := header_store.Values("Host")
+	if version == "HTTP/1.1" && len(hosts) == 0 {
+		return nil, fmt.Errorf("missing host header!")
+	}
+	if len(hosts) > 1 {
+		return nil, fmt.Errorf("multiple host headers")
 	}
 	request := &http.Request{
 		Method:     method,
@@ -83,13 +88,16 @@ func ParseRequestLine(line string) (method, uri, version string, err error) {
 	if len(header_split) != 3 {
 		return "", "", "", fmt.Errorf("Request is malformed: %q", line)
 	}
+	if !isToken(header_split[0]) {
+		return "", "", "", fmt.Errorf("Request is malformed: %q", line)
+	}
 	return header_split[0], header_split[1], header_split[2], nil
 }
 
 // getting the key:value pairs
 func ParseRequestHeader(line string) (name, val string, err error) {
 	name, val, seperator := strings.Cut(line, ":")
-	if !seperator || name == "" || strings.ContainsAny(name, " \t") {
+	if !seperator || !isToken(name) {
 		return "", "", fmt.Errorf("Header is malformed: %q", line)
 	}
 	return name, strings.Trim(val, " \t"), nil
@@ -124,4 +132,34 @@ func isDigit(s string) bool {
 		}
 	}
 	return true
+}
+
+func isToken(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= 'A' && c <= 'Z':
+		case c >= '0' && c <= '9':
+		case strings.IndexByte("!#$%&'*+-.^_`/~", c) >= 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// reads a line and requires it to end with CRLF
+func readLine(reader *bufio.Reader) (string, error) {
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasSuffix(line, "\r\n") {
+		return "", fmt.Errorf("line not terminated by CRLF: %q", line)
+	}
+	return strings.TrimSuffix(line, "\r\n"), nil
 }
