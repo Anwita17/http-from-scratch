@@ -78,6 +78,11 @@ func ParseRequest(reader *bufio.Reader) (*http.Request, error) {
 		request.ContentLength = int64(len(body))
 		request.Body = io.NopCloser(bytes.NewReader(body))
 	} else if cl := header_store.Get("Content-Length"); cl != "" {
+		for _, v := range header_store.Values("Content-Length") {
+			if v != cl {
+				return nil, fmt.Errorf("conflicting Content-Length values %q", header_store.Values("Content-Length"))
+			}
+		}
 		n, err := strconv.ParseInt(cl, 10, 64)
 		if err != nil || n < 0 {
 			return nil, fmt.Errorf("Bad Content-Length %q", cl)
