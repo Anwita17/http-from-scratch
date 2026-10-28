@@ -67,7 +67,17 @@ func ParseRequest(reader *bufio.Reader) (*http.Request, error) {
 		Body:       http.NoBody,
 	}
 	// handle post with body
-	if cl := header_store.Get("Content-Length"); cl != "" {
+	if te := header_store.Get("Transfer-Encoding"); te != "" {
+		if !strings.EqualFold(te, "chunked") {
+			return nil, fmt.Errorf("unsupported transfer-encoding %q", te)
+		}
+		body, err := readChunkedBody(reader)
+		if err != nil {
+			return nil, err
+		}
+		request.ContentLength = int64(len(body))
+		request.Body = io.NopCloser(bytes.NewReader(body))
+	} else if cl := header_store.Get("Content-Length"); cl != "" {
 		n, err := strconv.ParseInt(cl, 10, 64)
 		if err != nil || n < 0 {
 			return nil, fmt.Errorf("Bad Content-Length %q", cl)
@@ -162,4 +172,38 @@ func readLine(reader *bufio.Reader) (string, error) {
 		return "", fmt.Errorf("line not terminated by CRLF: %q", line)
 	}
 	return strings.TrimSuffix(line, "\r\n"), nil
+}
+
+func readChunkedBody(reader *bufio.Reader) ([]byte, error) {
+	var body bytes.Buffer
+	for {
+		line, err := readLine(reader)
+		if err != nil {
+			return nil, fmt.Errorf("chunksize line: %w", err)
+		}
+		sizeStr, _, _ := strings.Cut(line, ";")
+		size, err := strconv.ParseUint(sizeStr, 16, 63)
+		if err != nil {
+			return nil, fmt.Errorf("invalid chunk size %q", sizeStr)
+		}
+		if size == 0 {
+			break
+		}
+		if _, err := io.CopyN(&body, reader, int64(size)); err != nil {
+			return nil, fmt.Errorf("chunk data: %w", err)
+		}
+		if end, err := readLine(reader); err != nil || end != "" {
+			return nil, fmt.Errorf("chunk not followed by CRLF")
+		}
+	}
+	for {
+		line, err := readLine(reader)
+		if err != nil {
+			return nil, fmt.Errorf("trailer: %w", err)
+		}
+		if line == "" {
+			break
+		}
+	}
+	return body.Bytes(), nil
 }
