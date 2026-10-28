@@ -17,6 +17,12 @@ func main() {
 	r.HandleFunc("/bye", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "bye")
 	})
+	r.HandleFunc("GET /users", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "list users")
+	})
+	r.HandleFunc("POST /users", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "create user")
+	})
 	if err := http1.ListenAndServe(addr, r); err != nil {
 		panic(err)
 	}
