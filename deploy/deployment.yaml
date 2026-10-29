@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpserver
+  labels:
+    app: myhttpserver
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myhttpserver
+  template:
+    metadata:
+      labels:
+        app: myhttpserver
+    spec:
+      containers:
+      - name: httpserver
+        image: httpserver:dev
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
