@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: monitoring
+  namespace: monitoring
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: vmui.localhost
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: vmsingle-vmks-victoria-metrics-k8s-stack
+            port:
+              number: 8428
+  - host: grafana.localhost
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: vmks-grafana
+            port:
+              number: 80
