@@ -8,6 +8,6 @@ image:
 
 deploy-local: image
 	kind load docker-image $(IMAGE) --name $(CLUSTER)
-	kubectl apply -f deploy/deployment.yaml -f deploy/ingress.yaml -f deploy/service.yaml
+	kubectl apply -f deploy/deployment.yaml -f deploy/ingress.yaml -f deploy/service.yaml -f deploy/vm-scrape.yaml
 	kubectl rollout restart deployment/httpserver
 	kubectl rollout status deployment/httpserver

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"httpServer/internal/http1"
+	"httpServer/internal/metrics"
 	"httpServer/internal/router"
 	"net/http"
 )
@@ -23,7 +24,8 @@ func main() {
 	r.HandleFunc("POST /users", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "create user")
 	})
-	if err := http1.ListenAndServe(addr, r); err != nil {
+	r.HandleFunc("GET /metrics", metrics.Handler)
+	if err := http1.ListenAndServe(addr, metrics.Count(r)); err != nil {
 		panic(err)
 	}
 }
