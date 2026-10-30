@@ -4,6 +4,9 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type route struct {
@@ -33,12 +36,17 @@ func (rt *Router) HandleFunc(pattern string, f func(http.ResponseWriter, *http.R
 }
 
 func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx, span := otel.Tracer("router").Start(r.Context(), "router.ServeHTTP")
+	defer span.End()
+	r = r.WithContext(ctx)
+
 	var allowed []string
 	for _, rte := range rt.routes {
 		if rte.path != r.URL.Path {
 			continue
 		}
 		if rte.method == "" || rte.method == r.Method {
+			span.SetAttributes(attribute.String("http.route", rte.path))
 			rte.handler.ServeHTTP(w, r)
 			return
 		}

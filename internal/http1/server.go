@@ -2,13 +2,19 @@ package http1
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"strings"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 )
+
+var tracer = otel.Tracer("http1")
 
 func ListenAndServe(addr string, handler http.Handler) error {
 	listener, err := net.Listen("tcp", addr)
@@ -51,34 +57,50 @@ func HandleConnection(conn net.Conn, mux http.Handler) error {
 		if _, err := buffer.Peek(1); err != nil {
 			return nil
 		}
-		request, err := ParseRequest(buffer)
-		if err != nil {
-			code := http.StatusBadRequest
-			if errors.Is(err, errWithVersion) {
-				code = http.StatusHTTPVersionNotSupported
-			}
-			w := NewResponse(conn)
-			w.Header().Set("Connection", "close")
-			w.WriteHeader(code)
-			w.finish(&http.Request{Method: http.MethodGet})
-			return nil
-		}
-		closeAfter := shouldClose(request)
-		w := NewResponse(conn)
-		if closeAfter {
-			w.Header().Set("Connection", "close")
-		}
-		mux.ServeHTTP(w, request)
-		if err := w.finish(request); err != nil {
+		keepOpen, err := serveOne(conn, buffer, mux)
+		if err != nil || !keepOpen {
 			return err
-		}
-
-		if closeAfter {
-			return nil
 		}
 		//return nil
 	}
 	//_, err = conn.Write([]byte("HTTP/1.1 200 OK \r\n Content-Length: 0\r\n"))
+}
+
+func serveOne(conn net.Conn, buffer *bufio.Reader, mux http.Handler) (keepOpen bool, err error) {
+	ctx, span := tracer.Start(context.Background(), "HandleRequest")
+	defer span.End()
+
+	_, parseSpan := tracer.Start(ctx, "ParseRequest")
+	request, err := ParseRequest(buffer)
+	if err != nil {
+		parseSpan.RecordError(err)
+		parseSpan.SetStatus(codes.Error, err.Error())
+	}
+	parseSpan.End()
+	if err != nil {
+		code := http.StatusBadRequest
+		if errors.Is(err, errWithVersion) {
+			code = http.StatusHTTPVersionNotSupported
+		}
+		w := NewResponse(conn)
+		w.Header().Set("Connection", "close")
+		w.WriteHeader(code)
+		w.finish(&http.Request{Method: http.MethodGet})
+		return false, nil
+	}
+
+	request = request.WithContext(ctx)
+
+	closeAfter := shouldClose(request)
+	w := NewResponse(conn)
+	if closeAfter {
+		w.Header().Set("Connection", "close")
+	}
+	mux.ServeHTTP(w, request)
+	if err := w.finish(request); err != nil {
+		return false, err
+	}
+	return !closeAfter, nil
 }
 
 func shouldClose(request *http.Request) bool {
